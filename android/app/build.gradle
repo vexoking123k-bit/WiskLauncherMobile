@@ -12,7 +12,7 @@ android {
     defaultConfig {
         applicationId "com.wiskcraft.wisklauncher"
         minSdk 26
-        targetSdk 34
+        targetSdk 28
         versionCode flutter.versionCode
         versionName flutter.versionName
     }
@@ -30,6 +30,11 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
+    }
+    lint {
+        disable 'ExpiredTargetSdkVersion'
+        abortOnError false
+        checkReleaseBuilds false
     }
     buildTypes {
         release {

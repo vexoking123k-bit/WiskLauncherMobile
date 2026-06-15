@@ -81,7 +81,9 @@ class JavaRuntimeManager {
     final glfwPatch =
         File(p.join(javaHome.path, 'pojav', 'lwjgl-glfw-classes.jar'));
     final pojavLibs = Directory(p.join(javaHome.path, 'pojav-libs'));
-    if (await glfwPatch.exists() && await pojavLibs.exists()) {
+    if (await glfwPatch.exists() &&
+        await pojavLibs.exists() &&
+        await verify(runtime)) {
       return runtime;
     }
     AppLogger.instance.info('java',

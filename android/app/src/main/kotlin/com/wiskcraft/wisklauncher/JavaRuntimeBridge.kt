@@ -2,6 +2,7 @@ package com.wiskcraft.wisklauncher
 
 import android.app.Activity
 import android.os.Build
+import android.system.Os
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -67,7 +68,7 @@ class JavaRuntimeBridge(
         if (majorVersion == 21) {
             val javaBin = installFromPojavApk(majorVersion, abi, dst)
                 ?: error(unavailableHolyJavaMessage(majorVersion, abi))
-            javaBin.setExecutable(true, false)
+            fixRuntimePermissions(dst)
             return@withContext mapOf(
                 "executablePath" to javaBin.absolutePath,
                 "vendor" to "PojavLauncherTeam/PojavLauncher",
@@ -85,7 +86,7 @@ class JavaRuntimeBridge(
         } ?: error("Holy Java archive missing bin/java (download URL: $assetUrl)")
         archive.delete()
         installPojavSupportFiles(abi, dst)
-        javaBin.setExecutable(true, false)
+        fixRuntimePermissions(dst)
 
         // We don't try to `-version` here because on Android the JRE needs
         // LD_LIBRARY_PATH set up to find its own libs. The Dart-side verify
@@ -224,6 +225,20 @@ class JavaRuntimeBridge(
                 FileOutputStream(out).use { input.copyTo(it) }
             }
             out.setExecutable(true, false)
+        }
+    }
+
+    private fun fixRuntimePermissions(root: File) {
+        root.walkTopDown().forEach { file ->
+            runCatching {
+                when {
+                    file.isDirectory -> Os.chmod(file.absolutePath, 493) // 0755
+                    file.parentFile?.name == "bin" -> Os.chmod(file.absolutePath, 493)
+                    file.extension == "so" -> Os.chmod(file.absolutePath, 493)
+                    file.name == "jspawnhelper" -> Os.chmod(file.absolutePath, 493)
+                    else -> Os.chmod(file.absolutePath, 420) // 0644
+                }
+            }
         }
     }
 
