@@ -292,9 +292,7 @@ class JavaRuntimeBridge(
             TarArchiveInputStream(gz).use { tarIn ->
                 while (true) {
                     val entry = tarIn.nextTarEntry ?: break
-                    // Strip the leading "jdk-XX/" prefix so paths land flat under dst.
-                    val parts = entry.name.split('/', limit = 2)
-                    val rel = if (parts.size == 2) parts[1] else entry.name
+                    val rel = normalizeTarPath(entry.name)
                     if (rel.isEmpty()) continue
                     val out = File(dst, rel)
                     if (entry.isDirectory) {
@@ -320,9 +318,7 @@ class JavaRuntimeBridge(
             TarArchiveInputStream(xz).use { tarIn ->
                 while (true) {
                     val entry = tarIn.nextTarEntry ?: break
-                    // Strip leading directory ("jre17-aarch64/" or similar).
-                    val parts = entry.name.split('/', limit = 2)
-                    val rel = if (parts.size == 2) parts[1] else entry.name
+                    val rel = normalizeTarPath(entry.name)
                     if (rel.isEmpty()) continue
                     val out = File(dst, rel)
                     if (entry.isDirectory) {
@@ -338,6 +334,29 @@ class JavaRuntimeBridge(
             }
         }
         return javaBin
+    }
+
+    private fun normalizeTarPath(name: String): String {
+        val clean = name.trimStart('/').removePrefix("./")
+        val parts = clean.split('/', limit = 2)
+        if (parts.size != 2) return clean
+
+        // Pojav's split JRE archives are already rooted at bin/, lib/, conf/,
+        // etc. Only strip a wrapper directory when it is clearly an archive
+        // root such as jdk-21/ or jre17-aarch64/. Blind stripping breaks
+        // lib/jvm.cfg into jvm.cfg, which makes bin/java exit immediately.
+        val first = parts[0].lowercase()
+        val rootedDirs = setOf(
+            "bin", "conf", "include", "legal", "lib", "man",
+            "pojav", "pojav-libs",
+        )
+        if (first in rootedDirs) return clean
+        val looksLikeWrapper =
+            first.startsWith("jdk") ||
+            first.startsWith("jre") ||
+            first.startsWith("java") ||
+            first.startsWith("openjdk")
+        return if (looksLikeWrapper) parts[1] else clean
     }
 
     suspend fun spawn(
