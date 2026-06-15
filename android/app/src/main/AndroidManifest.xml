@@ -8,6 +8,7 @@
         android:label="WiskLauncher"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:allowNativeHeapPointerTagging="false"
         android:requestLegacyExternalStorage="true">
         <activity
             android:name=".MainActivity"
