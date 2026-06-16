@@ -156,14 +156,34 @@ class VersionInstaller {
     AppLogger.instance.info('install', 'mainClass=${detail.mainClass}');
     AppLogger.instance.info('install',
         'assetsIndex=${detail.assets ?? detail.assetIndex?.id} libs=${detail.libraries.length}');
-    final marker = _installMarker(detail.id, profileId);
+    final globalMarker = _globalInstallMarker(detail.id);
+    final profileMarker = _profileInstallMarker(detail.id, profileId);
     final nativesDir = Directory(
         '${LauncherPaths.instance.profileDir(profileId).path}/natives');
-    if (await marker.exists() &&
+    if (await globalMarker.exists() &&
+        await profileMarker.exists() &&
         await LauncherPaths.instance.versionJar(detail.id).exists() &&
         await nativesDir.exists()) {
       onProgress?.call(InstallProgress('done', 1, '${detail.id} already ready'));
       AppLogger.instance.info('install', '✔ ${detail.id} ready (cached)');
+      return detail;
+    }
+
+    if (await globalMarker.exists() &&
+        await LauncherPaths.instance.versionJar(detail.id).exists()) {
+      onProgress?.call(const InstallProgress('natives', 0, 'Preparing natives'));
+      AppLogger.instance.info(
+          'install', '✔ ${detail.id} game files ready (cached)');
+      final resolved = await _libs.downloadAndResolve(detail);
+      await _natives.extract(
+        nativesJars: resolved.nativesJars,
+        outDir: nativesDir,
+        sourceLibraries: detail.libraries.where((l) => l.isApplicable()).toList(),
+      );
+      await profileMarker.parent.create(recursive: true);
+      await profileMarker.writeAsString(DateTime.now().toIso8601String());
+      onProgress?.call(InstallProgress('done', 1, 'Installed ${detail.id}'));
+      AppLogger.instance.info('install', '✔ ${detail.id} ready');
       return detail;
     }
 
@@ -201,13 +221,21 @@ class VersionInstaller {
     );
 
     onProgress?.call(InstallProgress('done', 1, 'Installed ${detail.id}'));
-    await marker.parent.create(recursive: true);
-    await marker.writeAsString(DateTime.now().toIso8601String());
+    await globalMarker.parent.create(recursive: true);
+    await profileMarker.parent.create(recursive: true);
+    final now = DateTime.now().toIso8601String();
+    await globalMarker.writeAsString(now);
+    await profileMarker.writeAsString(now);
     AppLogger.instance.info('install', '✔ ${detail.id} ready');
     return detail;
   }
 
-  File _installMarker(String versionId, String profileId) => File(p.join(
+  File _globalInstallMarker(String versionId) => File(p.join(
+      LauncherPaths.instance.configs.path,
+      'installed-versions',
+      '$versionId.ok'));
+
+  File _profileInstallMarker(String versionId, String profileId) => File(p.join(
       LauncherPaths.instance.profileDir(profileId).path,
       'installed-$versionId.ok'));
 

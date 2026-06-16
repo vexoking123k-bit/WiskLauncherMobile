@@ -15,6 +15,9 @@ typedef ProgressCallback = void Function(int received, int? total);
 class HttpDownloader {
   HttpDownloader({Dio? dio}) : _dio = dio ?? Dio();
 
+  static const bool _verboseHttp =
+      bool.fromEnvironment('WISK_VERBOSE_HTTP', defaultValue: false);
+
   final Dio _dio;
 
   /// Downloads `url` to `destinationPath`. Returns the destination file.
@@ -39,17 +42,17 @@ class HttpDownloader {
 
     if (await file.exists()) {
       if (trustSize && expectedSize != null && await file.length() == expectedSize) {
-        AppLogger.instance.debug('http', 'cached  $filename (${_kb(expectedSize)})');
+        _debug('cached  $filename (${_kb(expectedSize)})');
         return file;
       }
       if (expectedSha1 != null && await HashUtils.verifySha1(file, expectedSha1)) {
-        AppLogger.instance.debug('http', 'cached  $filename (sha1 ok)');
+        _debug('cached  $filename (sha1 ok)');
         return file;
       }
       await file.delete();
     }
 
-    AppLogger.instance.debug('http', 'GET     $filename');
+    _debug('GET     $filename');
     final tmp = File('$destinationPath.part');
     final sw = Stopwatch()..start();
     try {
@@ -84,9 +87,14 @@ class HttpDownloader {
     }
     await tmp.rename(destinationPath);
     sw.stop();
-    AppLogger.instance.debug('http',
-        'OK      $filename (${_kb(actualSize)} in ${sw.elapsedMilliseconds} ms)');
+    _debug('OK      $filename (${_kb(actualSize)} in ${sw.elapsedMilliseconds} ms)');
     return file;
+  }
+
+  static void _debug(String message) {
+    if (_verboseHttp) {
+      AppLogger.instance.debug('http', message);
+    }
   }
 
   static String _kb(int bytes) {
