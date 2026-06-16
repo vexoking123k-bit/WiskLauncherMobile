@@ -71,6 +71,7 @@ class JavaRuntimeManager {
       majorVersion: majorVersion,
       targetDir: LauncherPaths.instance.runtimeDir('java-$majorVersion').path,
     );
+    await _markLaunchSupportReady(installed);
     await register(installed);
     return installed;
   }
@@ -78,17 +79,41 @@ class JavaRuntimeManager {
   Future<JavaRuntime> ensureLaunchSupport(JavaRuntime runtime) async {
     if (!Platform.isAndroid) return runtime;
     final javaHome = Directory(p.dirname(p.dirname(runtime.executablePath)));
+    final javaBin = File(runtime.executablePath);
     final glfwPatch =
         File(p.join(javaHome.path, 'pojav', 'lwjgl-glfw-classes.jar'));
     final pojavLibs = Directory(p.join(javaHome.path, 'pojav-libs'));
+    final marker = _launchSupportMarker(runtime);
+
     if (await glfwPatch.exists() &&
         await pojavLibs.exists() &&
-        await verify(runtime)) {
+        await javaBin.exists() &&
+        await marker.exists()) {
       return runtime;
     }
+
+    if (await glfwPatch.exists() &&
+        await pojavLibs.exists() &&
+        await javaBin.exists() &&
+        await verify(runtime)) {
+      await _markLaunchSupportReady(runtime);
+      return runtime;
+    }
+
     AppLogger.instance.info('java',
         'repairing Java ${runtime.majorVersion} launch support files');
     return installRuntime(runtime.majorVersion);
+  }
+
+  File _launchSupportMarker(JavaRuntime runtime) => File(p.join(
+        LauncherPaths.instance.runtimeDir('java-${runtime.majorVersion}').path,
+        '.launch-support-ready',
+      ));
+
+  Future<void> _markLaunchSupportReady(JavaRuntime runtime) async {
+    final marker = _launchSupportMarker(runtime);
+    await marker.parent.create(recursive: true);
+    await marker.writeAsString(DateTime.now().toIso8601String());
   }
 
   /// Picks the best registered runtime for a Minecraft version. Falls back to

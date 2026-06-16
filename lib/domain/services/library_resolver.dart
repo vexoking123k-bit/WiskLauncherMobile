@@ -51,10 +51,37 @@ class LibraryResolver {
     AppLogger.instance.info('libs',
         'resolving ${tasks.length} library files (concurrency=$_concurrency)');
     final sw = Stopwatch()..start();
-    final classpath = <File>[];
-    final natives = <File>[];
+    final files = List<File?>.filled(tasks.length, null);
     var nextIndex = 0;
     var done = 0;
+
+    var allCached = true;
+    for (var i = 0; i < tasks.length; i++) {
+      final t = tasks[i];
+      final dest = File(p.join(libsDir.path, t.artifact.path));
+      files[i] = dest;
+      if (!await _isReady(dest, t.artifact.size)) {
+        allCached = false;
+      }
+    }
+
+    if (allCached) {
+      sw.stop();
+      final classpath = <File>[];
+      final natives = <File>[];
+      for (var i = 0; i < tasks.length; i++) {
+        final dest = files[i]!;
+        if (tasks[i].isNative) {
+          natives.add(dest);
+        } else {
+          classpath.add(dest);
+        }
+      }
+      AppLogger.instance.info('libs',
+          'resolved ${tasks.length} cached files in ${sw.elapsedMilliseconds} ms '
+          '(${classpath.length} cp, ${natives.length} natives)');
+      return ResolvedLibraries(classpath: classpath, nativesJars: natives);
+    }
 
     final reportEvery = (tasks.length / 10).ceil().clamp(5, 50);
     Future<void> worker() async {
@@ -69,11 +96,7 @@ class LibraryResolver {
           expectedSha1: t.artifact.sha1,
           expectedSize: t.artifact.size,
         );
-        if (t.isNative) {
-          natives.add(dest);
-        } else {
-          classpath.add(dest);
-        }
+        files[i] = dest;
         final d = ++done;
         onProgress?.call(t.name, d, tasks.length);
         if (d % reportEvery == 0) {
@@ -84,10 +107,28 @@ class LibraryResolver {
 
     await Future.wait(List.generate(_concurrency, (_) => worker()));
     sw.stop();
+    final classpath = <File>[];
+    final natives = <File>[];
+    for (var i = 0; i < tasks.length; i++) {
+      final dest = files[i]!;
+      if (tasks[i].isNative) {
+        natives.add(dest);
+      } else {
+        classpath.add(dest);
+      }
+    }
     AppLogger.instance.info('libs',
         'resolved ${tasks.length} files in ${sw.elapsedMilliseconds} ms '
         '(${classpath.length} cp, ${natives.length} natives)');
     return ResolvedLibraries(classpath: classpath, nativesJars: natives);
+  }
+
+  Future<bool> _isReady(File file, int? expectedSize) async {
+    if (!await file.exists()) return false;
+    if (expectedSize != null && await file.length() != expectedSize) {
+      return false;
+    }
+    return true;
   }
 }
 
